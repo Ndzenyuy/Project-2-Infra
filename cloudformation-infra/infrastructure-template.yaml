@@ -1,0 +1,265 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for Terraform state backend, artifacts storage, and OIDC role for CI/CD'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: lumiatech-cloudformation
+    Description: Project name used for resource naming
+  
+  GitHubOrg:
+    Type: String
+    Description: GitHub organization or username (e.g., myorg)
+    Default: Ndzenyuy
+  
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository name (e.g., myrepo)
+    Default: Project-2-Deploy-to-Beanstalk
+  
+  GitHubBranch:
+    Type: String
+    Default: main
+    Description: GitHub branch allowed to assume the role
+  
+  BeanstalkApplicationName:
+    Type: String
+    Description: Name of the Elastic Beanstalk application
+    Default: lumiatech-tomcat-app
+  
+  BeanstalkEnvironmentName:
+    Type: String
+    Description: Name of the Elastic Beanstalk environment
+    Default: lumiatech-tomcat-app-env
+  
+  CreateOIDCProvider:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Set to 'true' to create a new OIDC provider, 'false' to use existing one
+  
+Conditions:
+  ShouldCreateOIDCProvider: !Equals [!Ref CreateOIDCProvider, 'true']
+
+Resources:
+  # S3 Bucket for Terraform State
+  TerraformStateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-terraform-state-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 90
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-terraform-state'
+        - Key: Purpose
+          Value: TerraformStateBackend
+
+  # S3 Bucket for Artifacts
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-artifacts-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 30
+            NoncurrentVersionExpirationInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-artifacts'
+        - Key: Purpose
+          Value: BuildArtifacts
+
+  # OIDC Provider for GitHub Actions
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  # IAM Role for GitHub Actions with OIDC
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-github-actions-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateOIDCProvider
+                - !GetAtt GitHubOIDCProvider.Arn
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub 'repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/${GitHubBranch}'
+      ManagedPolicyArns:
+        - !Ref GitHubActionsPolicy
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-github-actions-role'
+
+  # IAM Policy for GitHub Actions
+  GitHubActionsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub '${ProjectName}-github-actions-policy'
+      Description: Policy for GitHub Actions to manage S3 and Elastic Beanstalk
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # S3 Permissions for Terraform State
+          - Sid: TerraformStateAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+              - s3:GetBucketVersioning
+              - s3:GetObjectVersion
+            Resource:
+              - !GetAtt TerraformStateBucket.Arn
+              - !Sub '${TerraformStateBucket.Arn}/*'
+          
+          # S3 Permissions for Artifacts
+          - Sid: ArtifactsAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+              - s3:PutObjectAcl
+            Resource:
+              - !GetAtt ArtifactsBucket.Arn
+              - !Sub '${ArtifactsBucket.Arn}/*'
+          
+          # Elastic Beanstalk Permissions
+          - Sid: ElasticBeanstalkDeployment
+            Effect: Allow
+            Action:
+              - elasticbeanstalk:CreateApplicationVersion
+              - elasticbeanstalk:DescribeApplicationVersions
+              - elasticbeanstalk:DescribeEnvironments
+              - elasticbeanstalk:DescribeEvents
+              - elasticbeanstalk:UpdateEnvironment
+              - elasticbeanstalk:DescribeEnvironmentHealth
+              - elasticbeanstalk:DescribeInstancesHealth
+              - elasticbeanstalk:DescribeConfigurationSettings
+            Resource:
+              - !Sub 'arn:aws:elasticbeanstalk:${AWS::Region}:${AWS::AccountId}:application/${BeanstalkApplicationName}'
+              - !Sub 'arn:aws:elasticbeanstalk:${AWS::Region}:${AWS::AccountId}:applicationversion/${BeanstalkApplicationName}/*'
+              - !Sub 'arn:aws:elasticbeanstalk:${AWS::Region}:${AWS::AccountId}:environment/${BeanstalkApplicationName}/${BeanstalkEnvironmentName}'
+          
+          # Additional Beanstalk permissions (some actions don't support resource-level permissions)
+          - Sid: ElasticBeanstalkGeneral
+            Effect: Allow
+            Action:
+              - elasticbeanstalk:CheckDNSAvailability
+              - elasticbeanstalk:DescribeApplications
+            Resource: '*'
+          
+          # Auto Scaling permissions (required for Beanstalk)
+          - Sid: AutoScalingRead
+            Effect: Allow
+            Action:
+              - autoscaling:DescribeAutoScalingGroups
+              - autoscaling:DescribeScalingActivities
+              - autoscaling:DescribeLaunchConfigurations
+            Resource: '*'
+          
+          # EC2 permissions (required for Beanstalk)
+          - Sid: EC2Read
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeInstanceStatus
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeSubnets
+              - ec2:DescribeVpcs
+            Resource: '*'
+          
+          # CloudWatch Logs (optional but recommended for deployment monitoring)
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:DescribeLogStreams
+              - logs:GetLogEvents
+            Resource:
+              - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/elasticbeanstalk/${BeanstalkApplicationName}/*'
+
+Outputs:
+  TerraformStateBucketName:
+    Description: Name of the S3 bucket for Terraform state
+    Value: !Ref TerraformStateBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-TerraformStateBucket'
+  
+  TerraformStateBucketArn:
+    Description: ARN of the S3 bucket for Terraform state
+    Value: !GetAtt TerraformStateBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TerraformStateBucketArn'
+  
+  ArtifactsBucketName:
+    Description: Name of the S3 bucket for artifacts
+    Value: !Ref ArtifactsBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ArtifactsBucket'
+  
+  ArtifactsBucketArn:
+    Description: ARN of the S3 bucket for artifacts
+    Value: !GetAtt ArtifactsBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ArtifactsBucketArn'
+  
+  GitHubActionsRoleArn:
+    Description: ARN of the IAM role for GitHub Actions
+    Value: !GetAtt GitHubActionsRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubActionsRoleArn'
+  
+  GitHubOIDCProviderArn:
+    Condition: ShouldCreateOIDCProvider
+    Description: ARN of the GitHub OIDC provider
+    Value: !GetAtt GitHubOIDCProvider.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubOIDCProviderArn'
