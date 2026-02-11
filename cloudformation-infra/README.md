@@ -50,9 +50,8 @@ This CloudFormation template creates the necessary AWS infrastructure for a CI/C
 ```bash
 # Update parameters.json with your values
 aws cloudformation create-stack \
-  --stack-name my-infrastructure \
+  --stack-name deploy-base-resources \
   --template-body file://infrastructure-template.yaml \
-  --parameters file://parameters.json \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-east-1
 ```

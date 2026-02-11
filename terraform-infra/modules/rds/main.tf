@@ -39,6 +39,15 @@ resource "aws_security_group" "rds" {
   }
 }
 
+resource "aws_security_group_rule" "allow_mysql_self" {
+  type              = "ingress"
+  from_port         = 3306
+  to_port           = 3306
+  protocol          = "tcp"
+  security_group_id = aws_security_group.rds.id
+  source_security_group_id = aws_security_group.rds.id
+}
+
 # RDS Instance
 resource "aws_db_instance" "main" {
   identifier        = "${var.project_name}-${var.environment}-db"
@@ -77,4 +86,27 @@ resource "aws_db_instance" "main" {
     Project     = var.project_name
     Environment = var.environment
   }
+}
+
+resource "aws_ssm_parameter" "db_username" {
+  name  = "/lumiatech/rds/db_username"
+  type  = "String"
+  value = var.db_username
+}
+
+resource "aws_ssm_parameter" "db_password" {
+  name  = "/lumiatech/rds/db_password"
+  type  = "SecureString"
+  value = var.db_password
+}
+resource "aws_ssm_parameter" "db_endpoint" {
+  name  = "/lumiatech/rds/endpoint"
+  type  = "String"
+  value = aws_db_instance.main.endpoint
+}
+
+resource "aws_ssm_parameter" "db_name" {
+  name  = "/lumiatech/rds/db_name"
+  type  = "String"
+  value = var.db_name
 }

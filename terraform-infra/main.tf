@@ -1,15 +1,16 @@
-terraform {
-  required_version = ">= 1.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
+# default provider region, doesn't depend on data
 provider "aws" {
   region = var.aws_region
+}
+
+terraform {
+  backend "s3" {
+    bucket               = "lumiatech-terraform-state-243"
+    key                  = "lumitech-beanstalk.tfstate"
+    region               = "us-east-1"
+    workspace_key_prefix = "environments"
+    use_lockfile         = true
+  }
 }
 
 # VPC Module (if you don't have an existing VPC)
@@ -51,4 +52,12 @@ module "rds" {
   beanstalk_sg_id   = module.elastic_beanstalk.security_group_id
   project_name      = var.project_name
   environment       = var.environment
+}
+
+# Lambda Event Module
+module "lambda_event" {
+  source          = "./modules/lambda-event"
+  vpc_id          = module.vpc.vpc_id 
+  private_subnets  = module.vpc.private_subnets
+  lambda_sg_id    = module.rds.db_security_group_id
 }

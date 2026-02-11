@@ -343,3 +343,4 @@ resource "aws_elastic_beanstalk_environment" "env" {
     Environment = var.environment
   }
 }
+
