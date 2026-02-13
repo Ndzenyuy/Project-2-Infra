@@ -35,11 +35,16 @@ resource "aws_iam_role_policy" "lambda_rds_policy" {
         Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = "*"
       },
-        {
-            Effect   = "Allow"
-            Action   = ["ssm:GetParameter", "ssm:GetParameters"]
-            Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/lumiatech/rds/*"
-        }
+      {
+          Effect   = "Allow"
+          Action   = ["ssm:GetParameter", "ssm:GetParameters"]
+          Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/lumiatech/rds/*"
+      },
+      {
+          Effect   = "Allow"
+          Action   = ["kms:Decrypt"]
+          Resource = "*"
+      }
     ]
   })
 }
@@ -60,13 +65,24 @@ resource "aws_lambda_function" "initrds_lambda" {
 
   filename         = "${path.module}/init_rds.zip"
   source_code_hash = filebase64sha256("${path.module}/init_rds.zip")
+  environment {
+    variables = {
+      DB_HOST  = var.rds_endpoint
+      DB_NAME  = var.db_name
+      DB_PORT  = "3306"
+      USERNAME = var.db_username
+      PASSWORD = var.db_password
+    }
+  }
 
   vpc_config {
-    subnet_ids         = var.private_subnets
+    subnet_ids         = var.public_subnets
+    # subnet_ids         = var.private_subnets
     security_group_ids = [var.lambda_sg_id]
   }
-  timeout = 15
+  timeout = 600
 }
+
 
 
 

@@ -39,14 +39,14 @@ resource "aws_security_group" "rds" {
   }
 }
 
-resource "aws_security_group_rule" "allow_mysql_self" {
-  type              = "ingress"
-  from_port         = 3306
-  to_port           = 3306
-  protocol          = "tcp"
-  security_group_id = aws_security_group.rds.id
-  source_security_group_id = aws_security_group.rds.id
-}
+# resource "aws_security_group_rule" "allow_mysql_self" {
+#   type              = "ingress"
+#   from_port         = 3306
+#   to_port           = 3306
+#   protocol          = "tcp"
+#   security_group_id = aws_security_group.rds.id
+#   source_security_group_id = aws_security_group.rds.id
+# }
 
 # RDS Instance
 resource "aws_db_instance" "main" {

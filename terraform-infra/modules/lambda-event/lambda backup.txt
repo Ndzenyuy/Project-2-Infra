@@ -1,0 +1,48 @@
+import boto3
+import pymysql
+import cryptography
+import os
+
+ssm = boto3.client('ssm')
+
+def get_parameter(name, decrypt=False):
+    response = ssm.get_parameter(
+        Name=name,
+        WithDecryption=decrypt
+    )
+    return response['Parameter']['Value']
+
+def lambda_handler(event, context):
+
+    # db_host = get_parameter('/lumiatech/rds/endpoint')
+    # db_name = get_parameter('/lumiatech/rds/db_name')
+
+    # username = get_parameter('/lumiatech/rds/db_username')
+    # password = get_parameter('/lumiatech/rds/db_password', decrypt=True)
+
+    db_host = "lumiatech-beanstalk-v2-dev-db.cm38hcjhqkt1.us-east-1.rds.amazonaws.com"
+    db_name = "lumiatech-beanstalk-v2-dev-db"
+    db_port = 3306
+    username = "admin"
+    password = "admin123"
+
+    connection = pymysql.connect(
+        host=db_host,
+        user=username,
+        port=db_port,
+        password=password,
+        database=db_name
+    )
+
+    with connection.cursor() as cursor:
+        with open('db_backup.sql', 'r') as f:
+            sql_script = f.read()
+
+        for statement in sql_script.split(';'):
+            if statement.strip():
+                cursor.execute(statement)
+
+    connection.commit()
+    connection.close()
+
+    return {"status": "Database configured successfully"}

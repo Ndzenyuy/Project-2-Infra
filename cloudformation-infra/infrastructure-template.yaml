@@ -35,12 +35,12 @@ Parameters:
   ArtifactBucket:
     Type: String
     Description: Name of the S3 bucket for build artifacts (optional, will be created if not provided)
-    Default: 'lumiatech-artifacts-243'
+    Default: 'lumiatech-artifacts-24377'
 
   StateBucket:
     Type: String
     Description: Name of the S3 bucket for Terraform state (optional, will be created if not provided)
-    Default: 'lumiatech-terraform-state-243'
+    Default: 'lumiatech-terraform-state-24377'
   
   CreateOIDCProvider:
     Type: String

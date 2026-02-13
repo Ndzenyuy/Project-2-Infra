@@ -5,7 +5,7 @@ provider "aws" {
 
 terraform {
   backend "s3" {
-    bucket               = "lumiatech-terraform-state-243"
+    bucket               = "ndzenyuy-test-bucket"
     key                  = "lumitech-beanstalk.tfstate"
     region               = "us-east-1"
     workspace_key_prefix = "environments"
@@ -58,6 +58,31 @@ module "rds" {
 module "lambda_event" {
   source          = "./modules/lambda-event"
   vpc_id          = module.vpc.vpc_id 
-  private_subnets  = module.vpc.private_subnets
-  lambda_sg_id    = module.rds.db_security_group_id
+  public_subnets  = module.vpc.public_subnets
+  # private_subnets = module.vpc.private_subnets
+  # lambda_sg_id    = module.rds.db_security_group_id
+  lambda_sg_id    = module.elastic_beanstalk.security_group_id
+  rds_endpoint    = module.rds.db_endpoint
+  db_name         = var.db_name
+  db_username     = var.db_username
+  db_password     = var.db_password
+  depends_on = [ module.rds ]
+}
+
+module "dashboard" {
+  source = "./modules/dashboard"  
+}
+
+resource "null_resource" "invoke_lambda" {
+  # Make sure this runs after the Lambda is created
+  depends_on = [module.lambda_event]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      aws lambda invoke \
+        --function-name ${module.lambda_event.lambda_function_name} \
+        --payload '{}' \
+        response.json
+    EOT
+  }
 }
