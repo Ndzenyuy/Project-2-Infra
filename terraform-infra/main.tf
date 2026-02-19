@@ -4,8 +4,17 @@ provider "aws" {
 }
 
 terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "= 6.32.0"
+    }
+  }
+
   backend "s3" {
-    bucket               = "ndzenyuy-test-bucket"
+    bucket               = "temgoua-bucket"
     key                  = "lumitech-beanstalk.tfstate"
     region               = "us-east-1"
     workspace_key_prefix = "environments"
@@ -74,15 +83,9 @@ module "dashboard" {
 }
 
 resource "null_resource" "invoke_lambda" {
-  # Make sure this runs after the Lambda is created
   depends_on = [module.lambda_event]
 
   provisioner "local-exec" {
-    command = <<EOT
-      aws lambda invoke \
-        --function-name ${module.lambda_event.lambda_function_name} \
-        --payload '{}' \
-        response.json
-    EOT
+    command = "aws lambda invoke --function-name ${module.lambda_event.lambda_function_name} --payload '{}' response.json"
   }
 }

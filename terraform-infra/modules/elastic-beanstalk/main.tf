@@ -167,7 +167,8 @@ resource "aws_security_group_rule" "eb_instances_from_lb" {
 }
 
 data "aws_elastic_beanstalk_solution_stack" "tomcat10_corretto17" {
-  name_regex = "64bit Amazon Linux 2023 v5\\.9\\.2 running Tomcat 10 Corretto 17"
+  most_recent = true
+  name_regex  = "64bit Amazon Linux 2023.*Tomcat 10.*Corretto 17"
 }
 
 # Elastic Beanstalk Environment
